@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teachable Machine Pose Classification</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+    <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'pulse-slow': 'pulse 3s infinite',
+                        'bounce-slow': 'bounce 2s infinite',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-blue-600 min-h-screen p-4">
+    <div class="max-w-7xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden">
+        <!-- Header -->
+        <div class="bg-blue-700 text-white p-8 text-center">
+            <h1 class="text-4xl md:text-5xl font-bold mb-4 drop-shadow-lg">🏃 Teachable Machine Pose MQTT Dashboard</h1>
+            <p class="text-xl opacity-90">Real-time Pose Classification with MQTT Integration</p>
+        </div>
+        
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 p-8">
+            <!-- Configuration Section -->
+            <div class="bg-gray-50 rounded-2xl p-6 border-2 border-gray-100 hover:border-blue-300 transition-all duration-300">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+                    ⚙️ Configuration
+                </h2>
+                
+                <!-- MQTT Configuration -->
+                <div class="space-y-4 mb-6">
+                    <div>
+                        <label for="mqttBroker" class="block text-sm font-semibold text-gray-700 mb-2">MQTT Broker URL:</label>
+                        <input type="text" id="mqttBroker" value="wss://broker.hivemq.com:8884/mqtt" 
+                               class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300">
+                    </div>
+                    
+                    <div>
+                        <label for="mqttTopic" class="block text-sm font-semibold text-gray-700 mb-2">MQTT Topic:</label>
+                        <input type="text" id="mqttTopic" value="teachable-machine/pose-classification" 
+                               class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300">
+                    </div>
+                    
+                    <button id="mqttConnectBtn" onclick="toggleMQTTConnection()" 
+                            class="bg-orange-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-orange-600 transform hover:scale-105 transition-all duration-300 shadow-lg">
+                        Connect to MQTT
+                    </button>
+                    
+                    <div id="mqttStatus" class="px-4 py-3 rounded-lg bg-red-100 text-red-800 border border-red-200">
+                        MQTT: Disconnected
+                    </div>
+                </div>
+                
+                <!-- Model Configuration -->
+                <div class="space-y-4 mb-6">
+                    <div>
+                        <label for="modelUrl" class="block text-sm font-semibold text-gray-700 mb-2">Model Shareable Link:</label>
+                        <input type="text" id="modelUrl" placeholder="https://teachablemachine.withgoogle.com/models/your-model/" 
+                               class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300">
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="probabilityThreshold" class="block text-sm font-semibold text-gray-700 mb-2">Probability Threshold:</label>
+                            <select id="probabilityThreshold" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300">
+                                <option value="0.75">0.75 (Default)</option>
+                                <option value="0.5">0.5 (More Sensitive)</option>
+                                <option value="0.85">0.85 (Less Sensitive)</option>
+                                <option value="0.95">0.95 (Very Conservative)</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label for="minPartConfidence" class="block text-sm font-semibold text-gray-700 mb-2">Pose Confidence:</label>
+                            <select id="minPartConfidence" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300">
+                                <option value="0.5">0.5 (Default)</option>
+                                <option value="0.3">0.3 (More Lenient)</option>
+                                <option value="0.7">0.7 (More Strict)</option>
+                                <option value="0.9">0.9 (Very Strict)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-3">
+                        <button id="loadModelBtn" onclick="loadModel()" 
+                                class="bg-orange-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-orange-600 transform hover:scale-105 transition-all duration-300 shadow-lg">
+                            Load Model
+                        </button>
+                        <button id="stopBtn" onclick="stopClassification()" disabled
+                                class="bg-red-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-red-600 transform hover:scale-105 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                            Stop Classification
+                        </button>
+                    </div>
+                    
+                    <div id="modelStatus" class="px-4 py-3 rounded-lg bg-blue-100 text-blue-800 border border-blue-200">
+                        Model: Not loaded
+                    </div>
+                </div>
+                
+                <!-- Logs -->
+                <div class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm max-h-48 overflow-y-auto" id="logs"></div>
+            </div>
+            
+            <!-- Webcam Section -->
+            <div class="bg-gray-50 rounded-2xl p-6 border-2 border-gray-100 hover:border-blue-300 transition-all duration-300">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+                    📹 Live Pose Classification
+                </h2>
+                
+                <div id="webcam-container" class="flex justify-center mb-6">
+                    <canvas id="canvas" class="rounded-2xl shadow-2xl border-4 border-blue-300" style="display: none;"></canvas>
+                </div>
+                
+                <div id="label-container" class="bg-white rounded-xl p-6 shadow-lg mb-6"></div>
+                
+                <button id="startBtn" onclick="startClassification()" disabled
+                        class="w-full bg-orange-500 text-white px-6 py-4 rounded-lg font-semibold hover:bg-orange-600 transform hover:scale-105 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                    Start Pose Classification
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let model, webcam, ctx, labelContainer, maxPredictions;
+        let mqttClient = null;
+        let isClassifying = false;
+        let lastPrediction = null;
+        let lastPublishedClass = null;
+
+        function log(message) {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            logs.innerHTML += `<div><span class="text-gray-400">[${timestamp}]</span> ${message}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function updateStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            
+            // Remove existing classes
+            element.className = element.className.replace(/(bg-\w+-\d+|text-\w+-\d+|border-\w+-\d+)/g, '');
+            
+            if (type === 'connected') {
+                element.className += ' px-4 py-3 rounded-lg bg-green-100 text-green-800 border border-green-200';
+            } else if (type === 'disconnected') {
+                element.className += ' px-4 py-3 rounded-lg bg-red-100 text-red-800 border border-red-200';
+            } else {
+                element.className += ' px-4 py-3 rounded-lg bg-blue-100 text-blue-800 border border-blue-200';
+            }
+        }
+
+        function toggleMQTTConnection() {
+            const btn = document.getElementById('mqttConnectBtn');
+            
+            if (mqttClient && mqttClient.connected) {
+                mqttClient.end();
+                btn.textContent = 'Connect to MQTT';
+                updateStatus('mqttStatus', 'MQTT: Disconnected', 'disconnected');
+            } else {
+                connectMQTT();
+            }
+        }
+
+        function connectMQTT() {
+            const brokerUrl = document.getElementById('mqttBroker').value;
+            
+            try {
+                log('<span class="text-yellow-400">Connecting to MQTT broker...</span>');
+                mqttClient = mqtt.connect(brokerUrl);
+                
+                mqttClient.on('connect', () => {
+                    log('<span class="text-green-400">✅ Connected to MQTT broker</span>');
+                    updateStatus('mqttStatus', 'MQTT: Connected', 'connected');
+                    document.getElementById('mqttConnectBtn').textContent = 'Disconnect MQTT';
+                });
+                
+                mqttClient.on('error', (error) => {
+                    log('<span class="text-red-400">❌ MQTT Error: ' + error.message + '</span>');
+                    updateStatus('mqttStatus', 'MQTT: Error', 'disconnected');
+                });
+                
+                mqttClient.on('close', () => {
+                    log('<span class="text-yellow-400">🔌 MQTT connection closed</span>');
+                    updateStatus('mqttStatus', 'MQTT: Disconnected', 'disconnected');
+                    document.getElementById('mqttConnectBtn').textContent = 'Connect to MQTT';
+                });
+                
+            } catch (error) {
+                log('<span class="text-red-400">❌ Failed to connect to MQTT: ' + error.message + '</span>');
+                updateStatus('mqttStatus', 'MQTT: Connection Failed', 'disconnected');
+            }
+        }
+
+        function publishToMQTT(prediction) {
+            log(`<span class="text-cyan-400">🔧 PublishToMQTT called: ${prediction.className} (${(prediction.probability * 100).toFixed(1)}%)</span>`);
+            
+            if (!mqttClient || !mqttClient.connected) {
+                log('<span class="text-red-400">⚠️ MQTT not connected</span>');
+                return;
+            }
+            
+            if (!prediction) {
+                log('<span class="text-red-400">⚠️ No prediction provided</span>');
+                return;
+            }
+            
+            // Always publish the first prediction, then only on changes
+            let shouldPublish = false;
+            
+            if (lastPublishedClass === null) {
+                shouldPublish = true;
+                log(`<span class="text-green-400">🆕 First prediction - will publish</span>`);
+            } else if (lastPublishedClass !== prediction.className) {
+                shouldPublish = true;
+                log(`<span class="text-yellow-400">🔄 Class changed: "${lastPublishedClass}" → "${prediction.className}"</span>`);
+            } else {
+                log(`<span class="text-gray-400">⏸️ Same class: ${prediction.className} - no publish</span>`);
+            }
+            
+            if (shouldPublish) {
+                const topic = document.getElementById('mqttTopic').value;
+                
+                const message = {
+                    type: 'pose',
+                    className: prediction.className,
+                    probability: prediction.probability
+                };
+                
+                try {
+                    mqttClient.publish(topic, JSON.stringify(message));
+                    lastPublishedClass = prediction.className;
+                    log(`<span class="text-blue-400">📤 PUBLISHED: ${prediction.className} (${(prediction.probability * 100).toFixed(1)}%)</span>`);
+                } catch (error) {
+                    log(`<span class="text-red-400">❌ Publish error: ${error.message}</span>`);
+                }
+            }
+        }
+
+        async function loadModel() {
+            const modelUrl = document.getElementById('modelUrl').value;
+            
+            if (!modelUrl) {
+                log('<span class="text-red-400">❌ Please enter a model URL</span>');
+                return;
+            }
+            
+            try {
+                log('<span class="text-yellow-400">🤖 Loading pose model...</span>');
+                updateStatus('modelStatus', 'Model: Loading...', 'info');
+                
+                log('<span class="text-blue-400">🌐 Loading model from URL...</span>');
+                const modelURL = modelUrl + "model.json";
+                const metadataURL = modelUrl + "metadata.json";
+                
+                // Load the pose model
+                model = await tmPose.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                
+                // Get class labels from the model
+                const classLabels = model.getClassLabels();
+                
+                log(`<span class="text-green-400">✅ Model loaded successfully with ${maxPredictions} classes</span>`);
+                log(`<span class="text-blue-400">📋 Classes: ${classLabels.join(', ')}</span>`);
+                updateStatus('modelStatus', `Model: Loaded (${maxPredictions} classes)`, 'connected');
+                
+                document.getElementById('startBtn').disabled = false;
+                
+            } catch (error) {
+                log('<span class="text-red-400">❌ Error loading model: ' + error.message + '</span>');
+                updateStatus('modelStatus', 'Model: Failed to load', 'disconnected');
+            }
+        }
+
+        async function startClassification() {
+            if (!model) {
+                log('<span class="text-red-400">❌ Please load a model first</span>');
+                return;
+            }
+            
+            try {
+                log('<span class="text-yellow-400">📹 Starting webcam for pose detection...</span>');
+                
+                const size = 320;
+                const flip = true;
+                webcam = new tmPose.Webcam(size, size, flip);
+                await webcam.setup();
+                await webcam.play();
+                
+                // Setup canvas
+                const canvas = document.getElementById("canvas");
+                canvas.width = size;
+                canvas.height = size;
+                canvas.style.display = 'block';
+                ctx = canvas.getContext("2d");
+                
+                // Setup label container
+                labelContainer = document.getElementById("label-container");
+                labelContainer.innerHTML = '';
+                
+                for (let i = 0; i < maxPredictions; i++) {
+                    labelContainer.appendChild(document.createElement("div"));
+                }
+                
+                isClassifying = true;
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                
+                log('<span class="text-blue-400">🔄 Change-based MQTT publishing enabled</span>');
+                log('<span class="text-green-400">✅ Pose classification started</span>');
+                
+                window.requestAnimationFrame(loop);
+                
+            } catch (error) {
+                log('<span class="text-red-400">❌ Error starting classification: ' + error.message + '</span>');
+                isClassifying = false;
+            }
+        }
+
+        async function loop() {
+            if (!isClassifying) return;
+            
+            webcam.update();
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        async function predict() {
+            if (!model || !webcam) return;
+            
+            try {
+                // Estimate pose
+                const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+                
+                // Run classification
+                const prediction = await model.predict(posenetOutput);
+                
+                // Sort predictions by probability
+                prediction.sort((a, b) => b.probability - a.probability);
+                lastPrediction = prediction;
+                
+                // Get the best prediction
+                const bestPrediction = prediction[0];
+                const probabilityThreshold = parseFloat(document.getElementById('probabilityThreshold').value);
+                
+                // Update UI with Tailwind classes
+                for (let i = 0; i < maxPredictions; i++) {
+                    const classPrediction = prediction[i];
+                    const confidence = (classPrediction.probability * 100).toFixed(1);
+                    const confidenceColor = confidence > 70 ? 'bg-blue-500' : confidence > 40 ? 'bg-blue-400' : 'bg-gray-500';
+                    
+                    labelContainer.childNodes[i].innerHTML = `
+                        <div class="flex justify-between items-center p-4 mb-3 bg-gray-50 rounded-xl border-l-4 border-blue-500 hover:bg-gray-100 transition-colors duration-200">
+                            <span class="font-semibold text-gray-800 text-lg">${classPrediction.className}</span>
+                            <span class="${confidenceColor} text-white px-3 py-1 rounded-full text-sm font-bold">${confidence}%</span>
+                        </div>
+                    `;
+                }
+                
+                // Draw the pose with skeleton
+                drawPose(pose);
+                
+                // MQTT Publishing - Only when prediction meets threshold
+                if (bestPrediction && bestPrediction.probability >= probabilityThreshold) {
+                    publishToMQTT(bestPrediction);
+                }
+                
+            } catch (error) {
+                log('<span class="text-red-400">❌ Prediction error: ' + error.message + '</span>');
+            }
+        }
+
+        function drawPose(pose) {
+            if (webcam.canvas && ctx) {
+                ctx.drawImage(webcam.canvas, 0, 0);
+                
+                // Draw the keypoints and skeleton
+                if (pose) {
+                    const minPartConfidence = parseFloat(document.getElementById('minPartConfidence').value);
+                    tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+                    tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+                }
+            }
+        }
+
+        function stopClassification() {
+            isClassifying = false;
+            
+            if (webcam) {
+                webcam.stop();
+                webcam = null;
+            }
+            
+            // Hide canvas
+            const canvas = document.getElementById("canvas");
+            canvas.style.display = 'none';
+            
+            // Reset last published class
+            lastPublishedClass = null;
+            
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById("label-container").innerHTML = '';
+            
+            log('<span class="text-yellow-400">⏹️ Pose classification stopped</span>');
+        }
+
+        // Initialize
+        log('<span class="text-green-400">🚀 Pose Dashboard initialized - Ready to configure</span>');
+    </script>
+</body>
+</html>
