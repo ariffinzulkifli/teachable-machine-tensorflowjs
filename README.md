@@ -145,13 +145,13 @@ All dashboards publish JSON messages in this format:
 
 ```json
 {
-  "type": "image classification",
+  "type": "image",
   "className": "detected_class_name", 
   "probability": 0.95
 }
 ```
 
-- `type`: Classification type ("image classification", "audio classification", "pose classification")
+- `type`: Classification type ("image", "audio", "pose")
 - `className`: The detected class name from your model
 - `probability`: Confidence score (0.0 to 1.0)
 
