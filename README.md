@@ -86,6 +86,33 @@ const int blueLED = 5;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+void setup_wifi(){
+    Serial.print("Connecting to WiFi ")
+    WiFi.begin(ssid, password);
+    while(WiFi.status() != WL_CONNECTED){
+        Serial.print(".");
+        delay(500);
+    }
+    Serial.println("WiFi connected!");
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Connecting to MQTT broker ...");
+    // Attempt to connect
+    if (client.connect("arduinoClient")) {
+      Serial.println("connected");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   
