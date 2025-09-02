@@ -87,13 +87,13 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 void setup_wifi(){
-    Serial.print("Connecting to WiFi ")
-    WiFi.begin(ssid, password);
-    while(WiFi.status() != WL_CONNECTED){
-        Serial.print(".");
-        delay(500);
-    }
-    Serial.println("WiFi connected!");
+  Serial.print("Connecting to WiFi ");
+  WiFi.begin(ssid, password);
+  while(WiFi.status() != WL_CONNECTED){
+      Serial.print(".");
+      delay(500);
+  }
+  Serial.println("WiFi connected!");
 }
 
 void reconnect() {
